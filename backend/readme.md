@@ -1,4 +1,11 @@
+# EventHub
+Eventhub is an event management platform that allows event organisers to manage events and get analytics insights for their events.
 
+# Featues
+ - Event management
+ - User management
+ - Subscription management system
+ - Notification 
 
 ## BACKEND endpoint
 
@@ -33,3 +40,8 @@
  
 
 ## Subscription Plan
+
+  - make payment
+  - upgrade
+  - downgrade
+  - get all plans
