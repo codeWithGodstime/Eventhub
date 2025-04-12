@@ -4,7 +4,7 @@ from django.core.mail import send_mail
 from django_countries.fields import CountryField
 from user.manager import CustomUserManager
 from utilities.utils import BaseModelMixin
-from utilities.choices import GenderType, NotificationType
+from utilities.choices import GenderType, NotificationType, SubscriptionPlanType
 
 
 class User(BaseModelMixin, AbstractUser):
@@ -63,7 +63,18 @@ class NotificationPreference(BaseModelMixin):
     receive_event_reminders = models.BooleanField(default=True) 
 
 
+class Feature(BaseModelMixin):
+    name = models.CharField(max_length=100)
+    description = models.TextField(null=True, blank=True)
+
 class SubscriptionPlan(BaseModelMixin):
-    pass
+    name = models.CharField(max_length=200)
+    price = models.DecimalField(max_digits=5, decimal_places=2)
+    duration = models.CharField(max_length=12, choices=SubscriptionPlanType.choices, default=SubscriptionPlanType.MONTHLY)
+    features = models.ManyToManyField(Feature)
 
 
+class UserSubscription(BaseModelMixin):
+    user = models.OneToOneField(User, related_name="user_subscription", on_delete=models.DO_NOTHING)
+    subscription_plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE, related_name="user_subscription")
+    end_date = models.DateTimeField()

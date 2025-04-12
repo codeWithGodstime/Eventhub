@@ -7,7 +7,6 @@ from utilities.choices import EventRegistrationStatusType
 
 User = get_user_model()
 
-
 class Event(BaseModelMixin):
     title = models.CharField(max_length=200)
     date = models.DateField()

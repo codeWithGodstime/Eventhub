@@ -14,3 +14,8 @@ class NotificationType(models.TextChoices):
 class EventRegistrationStatusType(models.TextChoices):
     CANCELLED = "CANCELLED", _("CANCELLED")
     CONFIRMED = "CONFIRMED", _("CONFIRMED")
+
+
+class SubscriptionPlanType(models.TextChoices):
+    MONTHLY = "MONTHLY"
+    YEARLY = "YEARLY"
