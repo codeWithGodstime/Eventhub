@@ -29,5 +29,5 @@ class Event(BaseModelMixin):
 class EventRegistration:
     name = models.CharField(max_length=200)
     email = models.EmailField()
-    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="event_registrations")
     status = models.CharField(max_length=10, choices=EventRegistrationStatusType.choices)
