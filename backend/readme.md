@@ -17,6 +17,8 @@
    - filter by month
    - search
  - get single event
+ - event views
+ - event analytics
 
 ### DASHBOARD
  - get attendees  
@@ -29,3 +31,5 @@
  - mark all as read
  - mark single notification 
  
+
+## Subscription Plan

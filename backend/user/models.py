@@ -61,3 +61,9 @@ class NotificationPreference(BaseModelMixin):
     receiver_marketing_email = models.BooleanField(default=False)
     receive_registration_notifications = models.BooleanField(default=True)
     receive_event_reminders = models.BooleanField(default=True) 
+
+
+class SubscriptionPlan(BaseModelMixin):
+    pass
+
+

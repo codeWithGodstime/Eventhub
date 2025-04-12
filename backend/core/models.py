@@ -26,8 +26,16 @@ class Event(BaseModelMixin):
         return f"{settings.FRONTEND_HOST_URL}/register/events/{self.id}"
 
 
-class EventRegistration:
+class EventRegistration(BaseModelMixin):
     name = models.CharField(max_length=200)
     email = models.EmailField()
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="event_registrations")
     status = models.CharField(max_length=10, choices=EventRegistrationStatusType.choices)
+
+
+class EventView(BaseModelMixin):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="event_views")
+    visitor_id = models.CharField(max_length=200, null=True, blank=True) # would be gotten from cookies 
+    user = models.CharField(max_length=200, null=True, blank=True)
+    user_agent = models.TextField()
+    ip_address = models.CharField(max_length=30)
