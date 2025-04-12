@@ -8,11 +8,25 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer as Si
 from django_countries.fields import Country
 from django_countries.serializer_fields import CountryField
 
-from .models import Notification, NotificationPreference
+from .models import Notification, NotificationPreference, Feature, UserSubscription, SubscriptionPlan
 
 
 User = get_user_model()
 logger = logging.getLogger(__file__)
+
+
+class FeatureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Feature
+        fields = ['id', 'name', 'description']
+
+class SubscriptionPlanSerializer(serializers.ModelSerializer):
+    features = FeatureSerializer(many=True)
+
+    class Meta:
+        model = SubscriptionPlan
+        fields = ['id', 'name', 'price', 'duration', 'features']
+
 
 class UserSerializer:
     class UserCreateSerializer(serializers.ModelSerializer):
@@ -141,7 +155,14 @@ class UserSerializer:
                 "id"
             )
 
+    class UserSubscriptionSerializer(serializers.ModelSerializer):
+        subscription_plan = SubscriptionPlanSerializer()
 
+        class Meta:
+            model = UserSubscription
+            fields = ['id', 'user', 'subscription_plan', 'start_date', 'end_date']
+
+            
 class TokenObtainSerializer(SimpleJWTTokenObtainPairSerializer):
  
      def validate(self, attrs: Dict[str, Any]):

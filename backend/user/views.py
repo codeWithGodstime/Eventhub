@@ -9,10 +9,10 @@ from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from rest_framework_simplejwt.views import TokenObtainPairView as SimpleJWTTokenObtainPairView
 from django.conf import settings
 from django.db import transaction
-from django.db.models import OuterRef, Subquery, Count, Max
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.utils import timezone
 
-from .models import Notification, NotificationPreference
+from .models import Notification, NotificationPreference, UserSubscription, SubscriptionPlan
 from .serializers import UserSerializer, TokenObtainSerializer
 
 logger = logging.getLogger(__name__)
@@ -124,15 +124,6 @@ class UserViewset(viewsets.ModelViewSet):
             return Response({"message": "Password change successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @transaction.atomic
-    @action(methods=['post'], detail=False, permission_classes=[permissions.IsAuthenticated]) 
-    def complete_onboarding(self, request, *args, **kwargs):
-        serializer = UserSerializer.UserOnBoardingSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.update(instance=request.user, validated_data=serializer.validated_data)
-            return Response({"message": "Onboarding completed!"})
-        return Response(serializer.errors, status=400)
-
     @action(methods=['get'], detail=False, permission_classes=[permissions.IsAuthenticated])
     def notification_preferences(self, request, *args, **kwargs):
         """"""
@@ -180,6 +171,79 @@ class UserViewset(viewsets.ModelViewSet):
         notification = user.notification_receiver.filter(id=request.data['id']).update(is_read=True)
         serializer = UserSerializer.NotificationSerializer(notification)
         return Response(data=serializer.data)
+
+
+class UserSubscriptionViewSet(viewsets.ModelViewSet):
+    queryset = UserSubscription.objects.all()
+    serializer_class = UserSerializer.UserSubscriptionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return self.queryset.filter(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def view_subscription(self, request):
+        """
+        View the current subscription details of the logged-in user
+        """
+        user_subscription = self.get_queryset().first()
+        if user_subscription:
+            serializer = self.get_serializer(user_subscription)
+            return Response(serializer.data)
+        return Response({"detail": "No subscription found for this user"}, status=404)
+
+    @action(detail=False, methods=['post'])
+    def upgrade_subscription(self, request):
+        """
+        Upgrade the user's subscription to a higher-tier plan
+        """
+        current_subscription = self.get_queryset().first()
+
+        if not current_subscription:
+            return Response({"detail": "No current subscription found."}, status=404)
+
+        new_plan_id = request.data.get('new_plan_id')
+        try:
+            new_plan = SubscriptionPlan.objects.get(id=new_plan_id)
+        except SubscriptionPlan.DoesNotExist:
+            return Response({"detail": "The requested plan does not exist."}, status=400)
+
+        if new_plan.price <= current_subscription.subscription_plan.price:
+            return Response({"detail": "New plan must be more expensive than the current one."}, status=400)
+
+        current_subscription.subscription_plan = new_plan
+        current_subscription.end_date = timezone.now() + timezone.timedelta(days=30)  # Recalculate end date
+        current_subscription.save()
+
+        serializer = self.get_serializer(current_subscription)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def downgrade_subscription(self, request):
+        """
+        Downgrade the user's subscription to a lower-tier plan
+        """
+        current_subscription = self.get_queryset().first()
+
+        if not current_subscription:
+            return Response({"detail": "No current subscription found."}, status=404)
+
+        # Fetch the new plan from the request
+        new_plan_id = request.data.get('new_plan_id')
+        try:
+            new_plan = SubscriptionPlan.objects.get(id=new_plan_id)
+        except SubscriptionPlan.DoesNotExist:
+            return Response({"detail": "The requested plan does not exist."}, status=400)
+
+        if new_plan.price >= current_subscription.subscription_plan.price:
+            return Response({"detail": "New plan must be less expensive than the current one."}, status=400)
+
+        current_subscription.subscription_plan = new_plan
+        current_subscription.end_date = timezone.now() + timezone.timedelta(days=30)
+        current_subscription.save()
+
+        serializer = self.get_serializer(current_subscription)
+        return Response(serializer.data)
 
 class TokenObtainPairView(SimpleJWTTokenObtainPairView):
      serializer_class = TokenObtainSerializer

@@ -1,4 +1,4 @@
-from django.urls import path, re_path
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import (
      TokenRefreshView,
@@ -6,13 +6,12 @@ from rest_framework_simplejwt.views import (
      TokenBlacklistView
  )
 
-from .views import UserViewset, TokenObtainPairView, ConversationViewset, UserPreferenceViewset
-from .consumer import ChatConsumer
+from .views import UserViewset, TokenObtainPairView, UserSubscriptionViewSet 
 
 router = DefaultRouter()
 router.register("users", UserViewset, basename="users")
-router.register("conversations", ConversationViewset, basename='conversations')
-router.register("preferences", UserPreferenceViewset, basename='preferences')
+router.register(r'subscriptions', UserSubscriptionViewSet, basename='user-subscription')
+
 
 urlpatterns = [
 
@@ -21,8 +20,3 @@ urlpatterns = [
      path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
      path('token/blacklist/', TokenBlacklistView.as_view(), name='token_blacklist'),
 ] + router.urls
-
-
-websocket_urlpatterns = [
-    path('ws/chat/', ChatConsumer.as_asgi()),
-]
