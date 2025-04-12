@@ -56,6 +56,7 @@ class Notification(BaseModelMixin):
     """
 
 class NotificationPreference(BaseModelMixin):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notification_preference")
     receive_email_notification_about_own_events = models.BooleanField(default=True)
     receiver_marketing_email = models.BooleanField(default=False)
     receive_registration_notifications = models.BooleanField(default=True)

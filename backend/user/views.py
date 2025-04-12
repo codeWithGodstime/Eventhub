@@ -10,18 +10,14 @@ from rest_framework_simplejwt.views import TokenObtainPairView as SimpleJWTToken
 from django.conf import settings
 from django.db import transaction
 from django.db.models import OuterRef, Subquery, Count, Max
-from geopy.distance import distance as geopy_distance
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Conversation, Message, UserPreference
-from .serializers import UserSerializer, TokenObtainSerializer, MessageSerializer, ConversationSerializer
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
+from .models import Notification, NotificationPreference
+from .serializers import UserSerializer, TokenObtainSerializer
 
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
-channel_layer = get_channel_layer()
 
 class UserViewset(viewsets.ModelViewSet):
     serializer_class = UserSerializer.UserRetrieveSerializer
@@ -33,7 +29,7 @@ class UserViewset(viewsets.ModelViewSet):
         if serializer.is_valid(raise_exception=True):
             user = serializer.save()
 
-            response_serializer = self.get_serializer(user)
+            response_serializer = UserSerializer.UserRetrieveSerializer(user)
 
             refresh = RefreshToken.for_user(user)
             access = refresh.access_token
@@ -55,7 +51,7 @@ class UserViewset(viewsets.ModelViewSet):
     def me(self, request, *args, **kwargs):
         user = request.user
         profile = user.profile
-        serializer = UserSerializer.ProfileSerializer(profile)
+        serializer = UserSerializer.UserRetrieveSerializer(profile)
         return Response(data=serializer.data)
     
     @action(methods=['get'], detail=True, permission_classes=[permissions.IsAuthenticated])
@@ -137,176 +133,53 @@ class UserViewset(viewsets.ModelViewSet):
             return Response({"message": "Onboarding completed!"})
         return Response(serializer.errors, status=400)
 
-    @action(methods=["get"], detail=False, permission_classes=[permissions.IsAuthenticated])
-    def feeds(self, request, *args, **kwargs):
-        user = request.user
-        location = user.base_location
-        interests = set(user.profile.interests or [])
-        # radius_km = getattr(user.notification_setting, "notify_radius_km", 1000)  # default to 100km
-        radius_km = 1000
-
-        if not location:
-            pass
-            # return Response({
-            #     "status": "error",
-            #     "message": "User location is not set."
-            # }, status=status.HTTP_400_BAD_REQUEST)
-
-        nearby_users = []
-        other_users = User.objects.exclude(id=user.id).select_related('profile')
-
-        # if other_users:
-        #     for other_user in other_users:
-
-        #         if not other_user.location:
-        #             continue
-
-        #         dist = geopy_distance(
-        #             (location.y, location.x),  # (lat, lon)
-        #             (other_user.location.y, other_user.location.x)
-        #         ).km
-
-        #         if dist <= radius_km:
-        #             other_interests = set(other_user.profile.interests or [])
-        #             nearby_users.append(other_user) #TODO remove later
-
-        #             # if interests & other_interests:  # at least one interest overlaps
-        #             #     other_user.distance_km = round(dist, 1)
-        #             #     nearby_users.append(other_user)
-            
-
-        serializer = UserSerializer.UserFeedSerializer(other_users, many=True)
-        return Response({
-            "status": "success",
-            "message": "Nearby users with shared interests",
-            "data": serializer.data
-        })
-
-    @action(methods=['post'], detail=True, permission_classes=[permissions.IsAuthenticated])
-    def dm_user(self, request, *args, **kwargs):
-        sender = request.user
-        receiver = self.get_object()
-
-        room = Conversation.get_room(receiver, sender)
-        message_serializer = MessageSerializer.MessageCreateSerializer(
-            data=dict(
-                conversation = room.id,
-                sender=sender.id,
-                content=request.data['content']
-            )
-        )
-
-        # the sender is online to be able to send message, check if the receiver has a channel_name send messge else save to db
-        # add user to group
-        async_to_sync(channel_layer.group_add)(f"conversation_{room.id}", sender.channel_name)
-
-        if(receiver.channel_name):
-            async_to_sync(channel_layer.group_add)(f"conversation_{room.id}", receiver.channel_name)
-
-        # send message
-        async_to_sync(channel_layer.group_send)(f"conversation_{room.id}", {"type": "send_mesage", "message": request.data['content']})
-        # TODO: send notication
-
-        message_serializer.is_valid(raise_exception=True)
-        message_serializer.save()
-        return Response(data=dict(message="Send successfully"))
-
-    @action(methods=['put'], detail=True, permission_classes=[permissions.IsAuthenticated])
-    def update_user_preferences(self, request, *args, **kwargs):
-        user = self.get_object()
-        
-        if user != request.user:
-            return Response(data={"message": "Permission denied, can only update your preference"}, status=403)
-
-        user_pref = user.user_preference
-
-        serializer = UserSerializer.UserPreferenceSerializer(
-            instance=user_pref,
-            data=request.data,
-            partial=True,
-            context={'request': request}
-        )
-        serializer.is_valid(raise_exception=True)
-        updated_pref = serializer.save()
-
-        return Response(
-            data={"message": "User preference updated successfully", "data": UserSerializer.UserPreferenceSerializer(updated_pref).data},
-            status=status.HTTP_200_OK
-        )
-    
     @action(methods=['get'], detail=False, permission_classes=[permissions.IsAuthenticated])
-    def user_preferences(self, request, *args, **kwargs):
+    def notification_preferences(self, request, *args, **kwargs):
         """"""
         user = request.user
-        preferences, _ = UserPreference.objects.get_or_create(user=user.id)
-        serializer = UserSerializer.UserPreferenceRetrieveSerializer(preferences)
+        preferences, _ = NotificationPreference.objects.get_or_create(user=user)
+        serializer = UserSerializer.NotificationPreferenceSerializer(preferences)
         return Response(data=serializer.data, status=200)
 
-
-class UserPreferenceViewset(viewsets.ModelViewSet):
-    queryset = UserPreference.objects.all()
-    serializer_class = UserSerializer.UserPreferenceSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self, *args, **kwargs):
-        if not self.request.user.is_superuser:
-            return UserPreference.objects.get(user=self.request.user)
-        return super().queryset(*args, **kwargs)
-
-class ConversationViewset(viewsets.ModelViewSet):
-    queryset = Conversation.objects.all()
-    serializer_class = ConversationSerializer.ConversationListSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    lookup_field ='uid'
-
-    def list(self, request, *args, **kwargs):
-        latest_message_time = Subquery(
-            Message.objects.filter(conversation=OuterRef('pk'))
-            .order_by('-created_at')
-            .values('created_at')[:1]
-        )
-
-        queryset = self.get_queryset().filter(
-            participants=request.user
-        ).annotate(
-            message_count=Count('messages'),
-            last_message_time=latest_message_time
-        ).filter(
-            message_count__gt=0
-        ).order_by('-last_message_time')  # Most recent first
-
-        self.queryset = queryset
-
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(queryset, many=True, context={'request': request})
-        return super().list(request, *args, **kwargs)
-
-
-    def create(self, request, *args, **kwargs):
-        current_user = request.user
-        receiver = request.data['receiver']
-
-        serializer = ConversationSerializer.ConversationCreateSerializer(
-            data=dict(
-                receiver=receiver,
-            ),
-            context={'request': request}
-        )
+    @action(methods=['get'], detail=False, permission_classes=[permissions.IsAuthenticated])
+    def update_notification_preferences(self, request, *args, **kwargs):
+        """"""
+        user = request.user
+        request['user'] = user.id
+        serializer = UserSerializer.NotificationPreferenceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        conversation = serializer.save()
 
-        return Response(data=dict(message="Conversation Created", uid=conversation.uid))
+        preferences, _ = NotificationPreference.objects.update_or_create(data=request.data, partial=True)
+        updated_serializer = UserSerializer.NotificationPreferenceSerializer(preferences)
 
-    def retrieve(self, request, *args, **kwargs):
-        conversation = self.get_object() 
-        # Mark all messages in this conversation as read
-        conversation.messages.filter(is_read=False).update(is_read=True)
-        serializer = ConversationSerializer.ConversationDetailSerializer(conversation, context={'request': request})
-        return Response(serializer.data)
+        return Response(data=updated_serializer.data, status=200)
+
+    @action(methods=['POST'], permission_classes=[permissions.IsAuthenticated])
+    def notifications(self, request, *args, **kwargs):
+        user = request.user
+
+        notifications = user.notification_receiver.all()
+        serializer = UserSerializer.NotificationSerializer(notifications, many=True)
+        return Response(data=serializer.data)
+
+    @action(methods=['POST'], permission_classes=[permissions.IsAuthenticated])
+    def mark_all_notifications_read(self, request, *args, **kwargs):
+        user = request.user
+
+        notifications = user.notification_receiver.filter(is_read=False).update(is_read=True)
+        serializer = UserSerializer.NotificationSerializer(notifications, many=True)
+        return Response(data=serializer.data)
+
+    @action(methods=['POST'], permission_classes=[permissions.IsAuthenticated])
+    def mark_notification_read(self, request, *args, **kwargs):
+        user = request.user
+
+        serializer = UserSerializer.ReadNotificationSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        notification = user.notification_receiver.filter(id=request.data['id']).update(is_read=True)
+        serializer = UserSerializer.NotificationSerializer(notification)
+        return Response(data=serializer.data)
 
 class TokenObtainPairView(SimpleJWTTokenObtainPairView):
      serializer_class = TokenObtainSerializer
